@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Backend runtime data
+backend/config/llm_config.json
+backend/data/mealmate.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Local editor and OS files
+.DS_Store
+.vscode/
