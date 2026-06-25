@@ -47,8 +47,7 @@ def test_init_db_creates_six_tables_and_imports_preset_dishes(isolated_db):
     dishes = database.get_dishes()
     categories = {dish["category"] for dish in dishes}
 
-    assert len(dishes) >= 30
-    assert len(dishes) <= 50
+    assert len(dishes) >= 60
     assert REQUIRED_CATEGORIES.issubset(categories)
     assert all(dish["price_source"] == "preset" for dish in dishes)
     assert all(isinstance(dish["ingredients"], list) for dish in dishes)

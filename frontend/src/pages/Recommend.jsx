@@ -207,7 +207,7 @@ export default function Recommend() {
               <span className="text-sm font-medium text-slate-700">餐型</span>
               <div className="grid grid-cols-4 gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
                 {MEAL_TYPES.map(({ value, label }) => (
-                  <button key={value} type="button" onClick={() => setMealType(value)}
+                  <button key={value} type="button" onClick={() => { setMealType(value); setResult(null); setRemarks([]); setCheckedIds(new Set()); setExcludeIds([]); }}
                     className={`rounded-md py-1.5 text-sm font-medium transition-all ${
                       mealType === value
                         ? "bg-white shadow-sm text-mealmate-green ring-1 ring-mealmate-green/30"

@@ -225,25 +225,125 @@ foodwise/
 |------|------|
 | 前端 | React 18 · Vite · Tailwind CSS · React Router DOM · recharts |
 | 后端 | Python 3.10 · Flask · SQLite |
-| 大模型 | Qwen-VL-Plus（图片识别）· Qwen-Plus（文本推理），via DashScope |
+| 大模型 | Qwen-VL-Plus（图片识别）· Qwen-Plus（文本推理）|
 | 测试 | pytest |
 
 ---
 
 ## AI 辅助开发记录
 
-本项目使用 Codex5.5 和 Claude sonnet-4.6作为主要AI开发辅助工具，覆盖需求拆解、架构设计、代码实现和测试调试各阶段。
+### 开发方式：Vibe Coding 分层协作
 
-| 阶段 | AI 辅助内容 |
-|------|-------------|
-| 需求拆解 | 将课程要求转化为 spec.md / plan.md / tasks.md 三层文档，明确 MVP 范围和功能优先级 |
-| 架构设计 | 设计 Flask Blueprint 分层（api / lib / data）、LLM 双模式切换机制（mock / real）、推荐链路（规则预筛 → LLM 推理 → 规则兜底） |
-| 代码生成 | 生成全部后端业务逻辑（recommend.py、remark.py、recommender.py、nutrition.py 等）和 13 个测试文件框架 |
-| Prompt 工程 | 设计菜品识别、饮食记录解析、个性化推荐、备注生成四套系统 Prompt，包含 JSON 格式约束和业务规则 |
-| 调试 | 定位并修复推荐数量断言（主食+饮品分类后总数 > 3）、预算约束仅应用主食、mock 备注未含 remark_habits 等问题 |
-| 文档 | 生成 README、AGENTS.md、codex_prompts.md 等全套项目文档 |
+本项目采用"Vibe Coding"AI 辅助开发模式，将大模型能力按角色分工嵌入完整开发链路：
 
-开发者负责：最终需求判断、业务规则确认、代码审查、手动验收测试、API Key 配置与 Demo 演示。
+1. **需求对话（网页端 Claude）**：通过自然语言对话描述系统需求，由 Claude 制定详细执行计划、输出 SDD 文档（spec.md / plan.md / tasks.md）以及 Codex 分步实现提示词（codex_prompts.md）。
+2. **框架实现（Codex）**：基于上一步产出的 Codex 提示词，由 Codex 5.5 完成前后端代码框架搭建、业务逻辑实现与完整测试，交付可运行的 MVP Demo。
+3. **迭代优化（Claude Code）**：在 MVP 基础上，由 Claude Code（claude-sonnet-4.6）负责界面与功能优化、新功能追加、Bug 修复和端到端链路验证。
+
+**人工职责：** 最终需求判断、业务规则确认、代码审查、手动验收测试、API Key 配置与 Demo 演示。
+
+---
+
+### 工具分工
+
+| 工具 | 阶段 | 主要职责 |
+|------|------|----------|
+| 网页端 Claude | 规划 | 需求拆解、SDD 文档、执行计划、Codex 提示词生成 |
+| Codex 5.5 | 实现 | 前后端框架代码、业务逻辑、13 个测试文件（67 个用例） |
+| Claude Code（claude-sonnet-4.6）| 优化 | Bug 修复、功能扩展、菜品库扩充、推荐引擎增强、UI 问题排查 |
+
+---
+
+### 阶段一：规划与文档（网页端 Claude）
+
+| 产出物 | 说明 |
+|--------|------|
+| `docs/spec.md` | 系统需求文档，含目标用户、核心痛点、功能范围与验收标准 |
+| `docs/plan.md` | 技术选型与 8 个里程碑拆分（M1 骨架 → M8 收尾） |
+| `docs/tasks.md` | 按里程碑细化的开发任务列表 |
+| `docs/prompts.md` | 7 套千问大模型 Prompt 模板（图片识别、记录解析、推荐、备注生成等） |
+| `codex_prompts.md` | Prompt A–N 共 14 个 Codex 分步实现提示词 |
+| `AGENTS.md` | AI Agent 行为规范与约束说明 |
+
+---
+
+### 阶段二：MVP 框架实现（Codex 5.5）
+
+Codex 按 codex_prompts.md 中的 14 个提示词分步完成以下工作：
+
+| 模块 | 实现内容 |
+|------|----------|
+| 数据库层 | `lib/database.py`：6 张表（users / contacts / dishes / order_history / recommendation_records / notes_templates）、CRUD 封装、预置菜品导入 |
+| LLM 封装 | `lib/llm.py`：千问 VL + 文本模型调用；`lib/mock_llm.py`：离线 Mock 模式 |
+| 推荐引擎 | `lib/recommender.py`：规则预筛（基础分 50，加分/扣分/淘汰）；`lib/recommend.py`：LLM 推理 → 规则兜底完整链路 |
+| 备注生成 | `lib/remark.py`：逐菜品 LLM 备注 + 规则兜底（忌口强制校验） |
+| 时间解析 | `lib/time_parser.py`：LLM 返回 occurred_at 与 resolved_occurred_at 一致性校验 |
+| 营养分析 | `lib/nutrition.py`：近期饮食聚合、营养分析摘要 |
+| API 路由层 | `api/` 下 5 个 Blueprint：profile / log_meal / meals / recommend / contacts |
+| 前端页面 | 6 个 React 页面（Home / Profile / LogMeal / MealHistory / Recommend / Contacts）+ 多个可复用组件 |
+| 测试套件 | 13 个测试文件、67 个 pytest 用例，覆盖数据库、时间解析、LLM、推荐、备注、API 端到端 |
+| 预置菜品 | `data/init_dishes.json`：初始 36 道菜，涵盖 9 个分类 |
+
+---
+
+### 阶段三：优化迭代（Claude Code）
+
+#### 3.1 测试修复（3 个失败用例 → 全绿）
+
+| 问题 | 根因 | 修复文件 |
+|------|------|----------|
+| `test_mock_generate_recommendation_returns_top_three` 断言 `total_estimated_price` | 该字段由 `recommend.py` 计算，非 LLM 返回，Mock 无此键 | `backend/tests/test_llm.py:76` |
+| `test_prompts_contain_required_plan_constraints` 4 处字符串断言全部失败 | 实际 Prompt 文本与断言字符串不匹配（"只返回 JSON" vs "必须返回 JSON"、中文标点差异等） | `backend/tests/test_llm.py:138-145` |
+| `test_generate_remarks_for_dishes_includes_habits` 断言备注含"少油" | Mock 的 `generate_remarks_for_dishes` 只拼接 `avoid_ingredients`，未包含 `remark_habits` | `backend/lib/mock_llm.py` |
+
+#### 3.2 项目描述统一
+
+将 7 个 Markdown 文件中的旧名称"个性化外卖推荐与智能备注系统/Agent"统一替换为"基于多模态大模型的个性化饮食管理与外卖推荐系统"，保留"基于多模态大模型的"前缀。
+
+涉及文件：`README.md` · `AGENTS.md` · `FoodWise_Final_Plan.md` · `codex_prompts.md` · `docs/spec.md` · `docs/plan.md` · `docs/prompts.md`
+
+#### 3.3 Git 仓库整理
+
+- 清理历史提交，以单一 `init` commit 推送至 GitHub
+- 本地及远端分支 `master` → `main`（修改 GitHub 默认分支后删除远端 master）
+
+#### 3.4 菜品库扩充
+
+将 `data/init_dishes.json` 从 **36 道**扩充至 **61 道**，每个分类由 4 道增至 6–8 道，新增菜品示例：
+
+| 分类 | 新增菜品 |
+|------|----------|
+| 盖饭类 | 红烧肉饭、宫保鸡丁饭、猪脚饭、梅菜扣肉饭 |
+| 粉面类 | 重庆小面、担担面、炒河粉 |
+| 轻食类 | 三明治套餐、水果燕麦碗 |
+| 快餐油炸类 | 炸猪排饭、披萨（芝士牛肉） |
+| 麻辣类 | 辣子鸡、红油抄手、干锅花菜 |
+| 汤粥类 | 猪肚鸡汤、绿豆汤 |
+| 家常菜类 | 红烧排骨、清蒸鲈鱼、回锅肉 |
+| 面点类 | 虾饺、葱油拌面、韭菜盒子 |
+| 饮料类 | 珍珠奶茶、绿茶、热牛奶 |
+
+扩充后执行 `init_db()` 重新导入，无需重启后端即时生效。
+
+#### 3.5 推荐引擎增强：LLM 自由推荐
+
+原推荐链路强制要求 LLM 只能从候选菜品列表（DB 预筛结果）中选取。改造后 LLM 可自由推荐候选列表之外的菜品。
+
+**改动文件：**
+
+- `backend/lib/llm.py`：`RECOMMENDATION_SYSTEM_PROMPT` 移除"dish_id 和 name 必须来自候选菜品列表"约束，改为"优先从候选中推荐；不足时可自由推荐，dish_id 填 `""`，并提供 category / ingredients / price"
+- `backend/lib/recommend.py`：`_sanitize_llm_recommendations` 新增自由推荐分支——候选列表找不到时不再跳过，而是创建带 `is_llm_free: true` 标记的虚拟菜品字典；同时检查菜名是否在 DB 全量菜品中存在（若存在说明是被过滤掉的忌口/超预算菜，依然拒绝）
+- `backend/lib/recommend.py`：`_candidate_for_recommendation` 新增虚拟菜品兜底，从推荐条目本身重建菜品字典，保证备注生成和价格汇总正常工作
+
+**同步修复（回归测试）：** 新增路径导致被忌口过滤的菜品可能借自由推荐渠道重新进入结果，通过 `all_dishes` 名称双重校验堵住该漏洞；测试断言 `len(dishes) <= 50` 更新为 `>= 60`。67 个用例持续全绿。
+
+#### 3.6 推荐页餐型切换 Bug 修复
+
+**现象：** 在推荐页已生成推荐结果后切换餐型（早/午/晚/加餐），"最近 3 次 X 餐"区域仍显示上一次推荐的旧数据。
+
+**根因：** `recentMeals` 优先取 `result.recent_meals_same_type`；切换餐型时只刷新了 `mealsByType`（API 重新拉取），但 `result` 状态未清空，旧数据持续覆盖新数据。
+
+**修复：** `Recommend.jsx` 餐型切换按钮的 `onClick` 中补充 `setResult(null); setRemarks([]); setCheckedIds(new Set()); setExcludeIds([]);`，与切换用户（`target`）时的行为保持一致。
 
 ---
 

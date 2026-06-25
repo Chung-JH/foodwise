@@ -92,7 +92,7 @@ def generate_next_meal_recommendation(payload):
             meal_type=meal_type,
             recent_meals_same_type=recent_meals_same_type,
         )
-        recommendations = _sanitize_llm_recommendations(llm_result, final_candidates, budget_range)
+        recommendations = _sanitize_llm_recommendations(llm_result, final_candidates, budget_range, dishes)
         if not any(r.get("course_type") == "主食" for r in recommendations):
             recommendations = _merge_rule_recommendations(recommendations, final_candidates)
         nutrition_summary = llm_result.get("nutrition_summary") or recent_analysis["recent_pattern"]["summary"]
@@ -247,7 +247,7 @@ def _price_in_budget(price, budget_range):
     return budget_range[0] <= value <= budget_range[1]
 
 
-def _sanitize_llm_recommendations(llm_result, candidates, budget_range):
+def _sanitize_llm_recommendations(llm_result, candidates, budget_range, all_dishes=None):
     if not isinstance(llm_result, dict):
         raise LLMResponseError("推荐结果必须是 JSON 对象")
     raw_items = llm_result.get("recommendations")
@@ -263,17 +263,60 @@ def _sanitize_llm_recommendations(llm_result, candidates, budget_range):
         if not isinstance(raw, dict):
             continue
         candidate = by_id.get(raw.get("dish_id")) or by_name.get(raw.get("name"))
-        if candidate is None or candidate.get("dish_id") in seen_ids:
-            continue
-        course_type = _get_course_type(candidate.get("category", ""))
-        if type_counts.get(course_type, 0) >= 3:
-            continue
-        # Budget filter only for 主食
-        if course_type == "主食" and not _price_in_budget(candidate.get("price"), budget_range):
-            continue
-        seen_ids.add(candidate["dish_id"])
-        type_counts[course_type] = type_counts.get(course_type, 0) + 1
-        result.append(_recommendation_from_candidate(candidate, raw))
+
+        if candidate is not None:
+            # Candidate-based recommendation
+            if candidate.get("dish_id") in seen_ids:
+                continue
+            course_type = _get_course_type(candidate.get("category", ""))
+            if type_counts.get(course_type, 0) >= 3:
+                continue
+            if course_type == "主食" and not _price_in_budget(candidate.get("price"), budget_range):
+                continue
+            seen_ids.add(candidate["dish_id"])
+            type_counts[course_type] = type_counts.get(course_type, 0) + 1
+            result.append(_recommendation_from_candidate(candidate, raw))
+        else:
+            # Free-form recommendation: LLM suggested a dish not in candidates
+            name = (raw.get("name") or "").strip()
+            if not name:
+                continue
+            # If the name matches a DB dish that was filtered out (allergen/budget), skip it
+            all_by_name = {d.get("name"): d for d in (all_dishes or [])}
+            if name in all_by_name:
+                continue
+            virtual_id = f"llm-{name}"
+            if virtual_id in seen_ids:
+                continue
+            category = raw.get("category") or ""
+            course_type = raw.get("course_type") or _get_course_type(category)
+            if course_type not in ("主食", "饮品", "点心"):
+                course_type = _get_course_type(category)
+            if type_counts.get(course_type, 0) >= 3:
+                continue
+            try:
+                price = float(raw.get("price") or 0)
+            except (TypeError, ValueError):
+                price = 0
+            if course_type == "主食" and not _price_in_budget(price, budget_range):
+                continue
+            seen_ids.add(virtual_id)
+            type_counts[course_type] = type_counts.get(course_type, 0) + 1
+            result.append({
+                "dish_id": virtual_id,
+                "name": name,
+                "course_type": course_type,
+                "category": category,
+                "ingredients": raw.get("ingredients") or [],
+                "estimated_nutrition": raw.get("estimated_nutrition") or {},
+                "nutrition_tags": [],
+                "remark_rules": [],
+                "score": int(raw.get("score") or 0),
+                "price": price,
+                "reason": raw.get("reason") or "LLM 个性化推荐",
+                "nutrition_highlight": raw.get("nutrition_highlight") or "",
+                "is_llm_free": True,
+            })
     return result
 
 
@@ -334,6 +377,18 @@ def _candidate_for_recommendation(recommendation, candidates):
     for candidate in candidates:
         if candidate.get("dish_id") == recommendation.get("dish_id"):
             return candidate
+    if recommendation.get("is_llm_free"):
+        return {
+            "dish_id": recommendation.get("dish_id"),
+            "name": recommendation.get("name"),
+            "category": recommendation.get("category", ""),
+            "ingredients": recommendation.get("ingredients", []),
+            "estimated_nutrition": recommendation.get("estimated_nutrition", {}),
+            "nutrition_tags": [],
+            "remark_rules": [],
+            "price": recommendation.get("price", 0),
+            "is_llm_free": True,
+        }
     return None
 
 
